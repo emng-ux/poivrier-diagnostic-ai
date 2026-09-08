@@ -1,0 +1,36 @@
+# ── API ──────────────────────────────────────────────────────
+anthropic>=0.40.0          # Claude API (OCR Vision + Agent)
+openai>=1.40.0             # Embeddings text-embedding-3-small
+
+# ── Base de données ───────────────────────────────────────────
+supabase>=2.5.0            # Client Supabase Python
+psycopg2-binary>=2.9.9    # PostgreSQL direct (optionnel)
+
+# ── PDF & Images ──────────────────────────────────────────────
+pymupdf>=1.24.0            # Extraction PDF (PyMuPDF / fitz)
+Pillow>=10.0.0             # Traitement images
+python-magic>=0.4.27       # Détection type MIME
+
+# ── Interface Streamlit ───────────────────────────────────────
+streamlit>=1.36.0          # Interface web
+streamlit-chat>=0.1.1      # Composant chat
+plotly>=5.22.0             # Graphiques (jauge de confiance)
+st-annotated-text>=4.0.1  # Affichage annotations
+
+# ── Edge Computing ────────────────────────────────────────────
+chromadb>=0.5.0            # Base vectorielle locale offline
+sentence-transformers>=3.0.0  # Embeddings locaux offline
+
+# ── Recherche Web ─────────────────────────────────────────────
+tavily-python>=0.3.3       # Recherche web Tavily API
+
+# ── Utilitaires ───────────────────────────────────────────────
+python-dotenv>=1.0.0       # Variables d'environnement
+pydantic>=2.7.0            # Validation des données
+tenacity>=8.3.0            # Retry automatique API
+tqdm>=4.66.0               # Barre de progression
+httpx>=0.27.0              # Client HTTP async
+aiofiles>=23.2.1           # I/O fichiers async
+
+# ── Traitement vidéo (upload vidéo) ──────────────────────────
+opencv-python-headless>=4.9.0  # Extraction frames vidéo
