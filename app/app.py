@@ -32,6 +32,17 @@ for _key in ("ANTHROPIC_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"):
 
 from agent.agent import AgroExpertPepper
 
+# ── DIAGNOSTIC TEMPORAIRE (a retirer une fois le probleme resolu) ─
+with st.sidebar.expander("🔧 Diagnostic clés API (temporaire)"):
+    _k = os.environ.get("ANTHROPIC_API_KEY", "")
+    if _k:
+        st.write(f"Longueur : {len(_k)} caractères")
+        st.write(f"Début : `{_k[:12]}`")
+        st.write(f"Fin : `{_k[-6:]}`")
+        st.write(f"Espaces début/fin ? {_k != _k.strip()}")
+    else:
+        st.write("❌ ANTHROPIC_API_KEY est vide ou absente")
+
 st.set_page_config(
     page_title="Agro-Expert Pepper",
     page_icon="🌿",
