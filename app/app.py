@@ -46,6 +46,98 @@ st.set_page_config(
 )
 
 # ══════════════════════════════════════════════════════════════════
+# Habillage visuel : palette inspiree du cycle du poivre (vigne -> grain
+# sec), typographie Fraunces (titres) + Work Sans (interface), bandeau
+# d'en-tete distinctif, boutons et bulles de chat retravailles.
+# ══════════════════════════════════════════════════════════════════
+GREEN = "#1B4332"
+GREEN_DARK = "#12281F"
+CREAM = "#FAF8F3"
+SAND = "#EDE6D6"
+INK = "#211F1B"
+CHILI = "#A83A1D"
+GOLD = "#C9A227"
+
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Work+Sans:wght@400;500;600&display=swap');
+
+html, body, [class*="css"] {{
+    font-family: 'Work Sans', sans-serif;
+}}
+h1, h2, h3 {{
+    font-family: 'Fraunces', serif !important;
+    color: {GREEN} !important;
+    font-weight: 600 !important;
+}}
+
+/* Bandeau d'en-tete */
+.pepper-hero {{
+    background: linear-gradient(135deg, {GREEN} 0%, {GREEN_DARK} 100%);
+    border-radius: 10px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+    color: {CREAM};
+}}
+.pepper-hero h1 {{
+    font-family: 'Fraunces', serif !important;
+    color: {CREAM} !important;
+    font-size: 2rem !important;
+    margin: 0 0 0.25rem 0 !important;
+    font-weight: 600 !important;
+}}
+.pepper-hero p {{
+    font-family: 'Work Sans', sans-serif;
+    color: {SAND} !important;
+    margin: 0;
+    font-size: 0.95rem;
+    opacity: 0.9;
+}}
+
+/* Boutons */
+.stButton > button {{
+    background-color: {GREEN};
+    color: {CREAM};
+    border: none;
+    border-radius: 6px;
+    font-family: 'Work Sans', sans-serif;
+    font-weight: 500;
+}}
+.stButton > button:hover {{
+    background-color: {GREEN_DARK};
+    color: {CREAM};
+}}
+
+/* Barre laterale */
+[data-testid="stSidebar"] {{
+    background-color: {SAND};
+}}
+
+/* Bulles de chat : accent vert cote agent */
+[data-testid="stChatMessageAvatarAssistant"] {{
+    background-color: {GREEN} !important;
+}}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"]) {{
+    border-left: 3px solid {GREEN};
+    border-radius: 4px;
+    padding-left: 0.75rem;
+}}
+
+/* Messages d'erreur / succes gardent leur sens (rouge = alerte, pas decoratif) */
+div[data-testid="stAlertContentError"] {{
+    color: {CHILI};
+}}
+</style>
+""", unsafe_allow_html=True)
+
+
+def render_hero(title: str, tagline: str):
+    st.markdown(
+        f'<div class="pepper-hero"><h1>🌿 {title}</h1><p>{tagline}</p></div>',
+        unsafe_allow_html=True,
+    )
+
+# ══════════════════════════════════════════════════════════════════
 # Textes bilingues (interface fixe + ecran de connexion + panneau admin)
 # ══════════════════════════════════════════════════════════════════
 UI_TEXT = {
@@ -206,8 +298,7 @@ if st.session_state.auth_user is None:
     )
     LT = UI_TEXT[_lang_from_choice(login_lang_choice)]
 
-    st.title("🌿 Agro-Expert Pepper")
-    st.caption(LT["login_caption"])
+    render_hero("Agro-Expert Pepper", LT["login_caption"])
 
     try:
         bootstrap_needed = not auth.has_any_user()
@@ -283,7 +374,7 @@ if "agent" not in st.session_state:
 
 # ── Barre laterale ──────────────────────────────────────────────
 with st.sidebar:
-    st.title("🌿 Agro-Expert Pepper")
+    st.markdown("### 🌿 Agro-Expert Pepper")
     st.caption(T["sidebar_caption"])
 
     lang_choice = st.radio(
@@ -403,9 +494,8 @@ with st.sidebar:
                             auth.set_active(u["username"], not u["active"])
                             st.rerun()
 
-# ── Titre principal ───────────────────────────────────────────────
-st.title("🌿 Agro-Expert Pepper")
-st.caption(T["main_caption"])
+# ── Bandeau principal ───────────────────────────────────────────────
+render_hero("Agro-Expert Pepper", T["main_caption"])
 
 # ── Historique de conversation ────────────────────────────────────
 for msg in st.session_state.messages:
