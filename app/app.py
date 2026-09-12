@@ -1,163 +1,149 @@
+# -*- coding: utf-8 -*-
+"""
+app.py — Interface Streamlit pour Agro-Expert Pepper
+Interface web du diagnostic des maladies et ravageurs du poivrier (Piper nigrum)
+Reutilise directement la classe AgroExpertPepper de agent/agent.py
+(meme logique Investigation -> Diagnostic -> Prescription, meme connexion
+Supabase / Claude API).
 
-# app.py - MVP Streamlit app for Diagnostic EFA/OPA
-import streamlit as st
-import uuid, json, sqlite3, os
+Usage:
+    py -m streamlit run app/app.py
+"""
+
+import os
+import sys
 from datetime import date
-from io import BytesIO
+import streamlit as st
 
-try:
-    from docx import Document
-except Exception:
-    Document = None
+# Permettre l'import du module agent/ situe a la racine du depot,
+# meme quand Streamlit est lance depuis app/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import pandas as pd
+# Sur Streamlit Community Cloud, les cles API sont fournies via st.secrets
+# (Settings > Secrets), pas via un fichier .env. On les recopie dans les
+# variables d'environnement AVANT d'importer agent.agent, qui les lit au
+# chargement du module. En local avec un .env, ce bloc ne fait rien de plus.
+for _key in ("ANTHROPIC_API_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"):
+    try:
+        if _key in st.secrets:
+            os.environ[_key] = st.secrets[_key]
+    except Exception:
+        pass
 
-BASE_DIR = "data"
-AUDIO_DIR = os.path.join(BASE_DIR, "audio")
-DB_PATH = os.path.join(BASE_DIR, "diagnostics.db")
-os.makedirs(AUDIO_DIR, exist_ok=True)
-os.makedirs(BASE_DIR, exist_ok=True)
+from agent.agent import AgroExpertPepper
 
-# --- DB init (SQLite) ---
-def init_db():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS diagnostics (
-                 id TEXT PRIMARY KEY, payload TEXT, created DATE)""")
-    conn.commit()
-    return conn
+st.set_page_config(
+    page_title="Agro-Expert Pepper",
+    page_icon="🌿",
+    layout="centered",
+)
 
-conn = init_db()
+# ── Initialisation de l'agent (une seule fois par session) ────────
+if "agent" not in st.session_state:
+    st.session_state.agent = AgroExpertPepper(lang="fr")
+    st.session_state.messages = []
+    welcome = st.session_state.agent.chat(
+        "Bonjour, je suis pret a vous aider. Presentez-vous."
+    )
+    st.session_state.messages.append({"role": "assistant", "content": welcome})
 
-def save_diagnostic(payload: dict):
-    id_ = str(uuid.uuid4())
-    cur = conn.cursor()
-    cur.execute("INSERT INTO diagnostics (id,payload,created) VALUES (?,?,?)",
-                (id_, json.dumps(payload, ensure_ascii=False), str(date.today())))
-    conn.commit()
-    return id_
+# ── Barre laterale ──────────────────────────────────────────────
+with st.sidebar:
+    st.title("🌿 Agro-Expert Pepper")
+    st.caption("Diagnostic des maladies du poivrier — IPC Knowledge Base")
 
-# --- Stub LLM caller (remplacer par Ollama/OpenAI) ---
-def call_llm(prompt:str, model="local-stub"):
-    # Retourner une structure JSON: {"summary": "...", "analysis": {...}}
-    # Remplacez cette fonction par un appel à Ollama/OpenAI.
-    return {
-        "summary": "Résumé automatique (stub) — remplacez call_llm par un vrai appel LLM.",
-        "analysis": {
-            "SWOT": {
-                "Forces": ["Force A (exemple)"],
-                "Faiblesses": ["Faiblesse A (exemple)"],
-                "Opportunites": ["Opportunité A (exemple)"],
-                "Menaces": ["Menace A (exemple)"]
-            },
-            "PESTEL": {"P": [], "E": [], "S": [], "T": [], "E2": [], "L": []},
-            "Porter": {"Entrants": [], "Clients": [], "Substituts": [], "Rivalite": [], "Fournisseurs": []},
-            "BCG": [],
-            "Ansoff": []
-        }
-    }
+    lang_choice = st.radio("Langue / Language", ["Français", "English"], index=0)
+    st.session_state.agent.lang = "fr" if lang_choice == "Français" else "en"
 
-def generate_docx_report(payload: dict, analysis: dict) -> bytes:
-    """Génère un rapport DOCX en mémoire et retourne les bytes (ou None si python-docx absent)."""
-    if Document is None:
-        return None
-    doc = Document()
-    doc.add_heading("Plan stratégique - Diagnostic EFA/OPA", level=1)
-    doc.add_paragraph(f"Nom: {payload.get('nom', '')}")
-    doc.add_paragraph(f"Type: {payload.get('type', '')}   Date: {payload.get('date', '')}")
-    doc.add_heading("Synthèse LLM", level=2)
-    doc.add_paragraph(analysis.get("summary", ""))
-    doc.add_heading("Analyse détaillée", level=2)
-    doc.add_paragraph("SWOT")
-    sw = analysis.get("analysis", {}).get("SWOT", {})
-    for k in ["Forces","Faiblesses","Opportunites","Menaces"]:
-        doc.add_heading(k, level=3)
-        items = sw.get(k, [])
-        for it in items:
-            doc.add_paragraph(f"- {it}")
-    # autres sections (PESTEL, Porter...)
-    doc.add_page_break()
-    bio = BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio.read()
+    st.divider()
 
-st.set_page_config(page_title="Agent IA - Diagnostic EFA/OPA", layout="wide")
-st.title("Agent IA — Diagnostic & Analyse stratégique (EFA / OPA)")
+    conseiller_nom = st.text_input(
+        "👤 Nom du conseiller",
+        value=st.session_state.get("conseiller_nom", ""),
+        placeholder="Ex: Jean Mballa",
+    )
+    st.session_state.conseiller_nom = conseiller_nom
 
-with st.form("diagnostic_form"):
-    col1, col2 = st.columns([2,1])
-    with col1:
-        type_diag = st.selectbox("Type de diagnostic", ["EFA","OPA"])
-        nom = st.text_input("Nom de l'exploitation / OPA")
-        responsable = st.text_input("Responsable / contact")
-        date_diag = st.date_input("Date du diagnostic", value=date.today())
-        st.header("Branches - étoile du conseil")
-        moyens = st.text_area("Moyens de production (description)")
-        perf = st.text_area("Performances technico-économiques (résumé par activité)")
-        finances_text = st.text_area("Finances (chiffres clés, remarques)")
-        milieu = st.text_area("Milieu local")
-        marches = st.text_area("Marchés / filières")
-        politiques = st.text_area("Politiques publiques")
-    with col2:
-        st.header("Pièces & enregistrements")
-        audio_file = st.file_uploader("Uploader un enregistrement audio (wav/mp3)", type=["wav","mp3"])
-        saved_audio_path = None
-        if audio_file is not None:
-            fname = f"{uuid.uuid4()}_{audio_file.name}"
-            path = os.path.join(AUDIO_DIR, fname)
-            with open(path, "wb") as f:
-                f.write(audio_file.read())
-            saved_audio_path = path
-            st.success("Audio sauvegardé.")
-        st.header("Options")
-        validation = st.checkbox("Validation préalable par le conseiller (cocher si ok)", value=False)
+    st.divider()
 
-    submitted = st.form_submit_button("Enregistrer diagnostic")
-if submitted:
-    payload = {
-        "type": type_diag,
-        "nom": nom,
-        "responsable": responsable,
-        "date": date_diag.isoformat(),
-        "branches": {
-            "moyens_production": moyens,
-            "performances_techno_economiques": perf,
-            "finances": finances_text,
-            "milieu_local": milieu,
-            "marches_filieres": marches,
-            "politiques_publiques": politiques
-        },
-        "validation_conseiller": validation,
-        "audio_file": saved_audio_path
-    }
-    id_ = save_diagnostic(payload)
-    st.success(f"Diagnostic enregistré (id={id_}).")
-    st.info("Appuyez sur 'Analyser' pour lancer l'analyse stratégique sur ce diagnostic.")
+    uploaded_photo = st.file_uploader(
+        "📷 Photo de la plante (optionnel)",
+        type=["jpg", "jpeg", "png"],
+        help=(
+            "L'analyse automatique d'image n'est pas encore activee : "
+            "decrivez dans le message ce que vous observez sur la photo."
+        ),
+    )
+    if uploaded_photo is not None:
+        st.image(uploaded_photo, caption="Photo fournie", use_container_width=True)
 
-st.markdown("---")
-st.header("Analyse stratégique")
-diag_id = st.text_input("Entrez l'ID du diagnostic à analyser (ou vide pour analyser le dernier)", value="")
-if st.button("Analyser"):
-    cur = conn.cursor()
-    if not diag_id:
-        cur.execute("SELECT id,payload FROM diagnostics ORDER BY created DESC LIMIT 1")
-    else:
-        cur.execute("SELECT id,payload FROM diagnostics WHERE id=? LIMIT 1", (diag_id,))
-    row = cur.fetchone()
-    if not row:
-        st.error("Diagnostic introuvable.")
-    else:
-        payload = json.loads(row[1])
-        prompt = f"Analyse stratégique (FR) pour le diagnostic suivant:\\n{json.dumps(payload, ensure_ascii=False)}\\nProduis: SWOT, PESTEL, Porter(5forces), BCG, Ansoff, actions priorisées et plan stratégique 3-5 ans et plan d'action annuel."
-        llm_out = call_llm(prompt)
-        st.subheader("Synthèse LLM")
-        st.write(llm_out.get("summary"))
-        st.subheader("Analyse détaillée")
-        st.json(llm_out.get("analysis"))
-        # Proposer export DOCX si possible
-        report_bytes = generate_docx_report(payload, llm_out) if Document is not None else None
-        if report_bytes:
-            st.download_button("Télécharger rapport DOCX", data=report_bytes, file_name=f"plan_strategique_{payload.get('nom','')}.docx")
+    st.divider()
+
+    if st.button("🔄 Nouveau diagnostic", use_container_width=True):
+        st.session_state.agent.reset()
+        st.session_state.messages = []
+        welcome = st.session_state.agent.chat(
+            "Bonjour, je suis pret a vous aider. Presentez-vous."
+        )
+        st.session_state.messages.append({"role": "assistant", "content": welcome})
+        st.rerun()
+
+    if st.button("📋 Générer le rapport WhatsApp", use_container_width=True):
+        today_str = date.today().strftime("%d/%m/%Y")
+        nom = st.session_state.get("conseiller_nom", "").strip()
+        if st.session_state.agent.lang == "fr":
+            nom_txt = nom if nom else "(non renseigne)"
+            request_msg = (
+                f"Genere le rapport WhatsApp du diagnostic en cours. "
+                f"Utilise exactement la date du jour : {today_str} et le nom du "
+                f"conseiller : {nom_txt}. N'utilise aucun placeholder du type "
+                f"[Aujourd'hui] ou [Votre nom], remplace-les directement par ces "
+                f"valeurs reelles."
+            )
         else:
-            st.info("python-docx non disponible dans l'environnement serveur -> export DOCX non proposé.")
+            nom_txt = nom if nom else "(not provided)"
+            request_msg = (
+                f"Generate the WhatsApp report for the current diagnosis. "
+                f"Use exactly today's date: {today_str} and the advisor's name: "
+                f"{nom_txt}. Do not use any placeholder like [Today] or [Your name], "
+                f"replace them directly with these real values."
+            )
+        st.session_state.messages.append({"role": "user", "content": request_msg})
+        reply = st.session_state.agent.chat(request_msg)
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+        st.rerun()
+
+# ── Titre principal ───────────────────────────────────────────────
+st.title("🌿 Agro-Expert Pepper")
+st.caption("Diagnostic IA des maladies et ravageurs du poivrier (*Piper nigrum*)")
+
+# ── Historique de conversation ────────────────────────────────────
+for msg in st.session_state.messages:
+    avatar = "🌿" if msg["role"] == "assistant" else "👤"
+    with st.chat_message(msg["role"], avatar=avatar):
+        st.markdown(msg["content"])
+
+# ── Zone de saisie ─────────────────────────────────────────────────
+placeholder = (
+    "Décrivez les symptômes observés..."
+    if st.session_state.agent.lang == "fr"
+    else "Describe the observed symptoms..."
+)
+user_input = st.chat_input(placeholder)
+
+if user_input:
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(user_input)
+
+    with st.chat_message("assistant", avatar="🌿"):
+        spinner_text = (
+            "Analyse en cours..."
+            if st.session_state.agent.lang == "fr"
+            else "Analyzing..."
+        )
+        with st.spinner(spinner_text):
+            reply = st.session_state.agent.chat(user_input)
+        st.markdown(reply)
+
+    st.session_state.messages.append({"role": "assistant", "content": reply})
