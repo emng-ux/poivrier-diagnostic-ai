@@ -3,6 +3,7 @@
 agent.py — Agro-Expert Pepper
 Agent IA agentique bilingue FR/EN de diagnostic des maladies du poivrier
 Source de verite : base Supabase IPC + Claude API
+Supporte l'analyse de photos (vision) en plus du texte.
 
 Usage:
     py agent/agent.py  (mode console interactif)
@@ -10,6 +11,7 @@ Usage:
 
 import os
 import sys
+import base64
 import json
 import anthropic
 from supabase import create_client
@@ -28,7 +30,7 @@ except ImportError:
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SUPABASE_URL      = os.environ.get("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
-MODEL             = "claude-haiku-4-5"  # Rapide et economique
+MODEL             = "claude-haiku-4-5"  # Rapide, economique, et supporte la vision
 MAX_TOKENS        = 1500
 
 # ── System Prompt bilingue ─────────────────────────────────────
@@ -36,10 +38,16 @@ SYSTEM_PROMPT_FR = """Tu es Agro-Expert Pepper, un agent IA specialise dans le d
 
 Ta source de verite unique : le guide officiel IPC "Diseases and Insect Pests of Black Pepper" (Sarma et al., 2013), dont les donnees sont stockees dans ta base de donnees.
 
+Tu peux aussi recevoir des PHOTOS de plantes malades. Quand une photo est fournie :
+- Decris d'abord objectivement ce que tu observes sur l'image (couleur, forme des taches, partie de la plante, etc.)
+- Compare ces observations visuelles aux symptomes decrits dans la base IPC
+- Si la photo ne suffit pas a conclure, pose des questions complementaires (odeur, humidite, anciennete)
+- Reste prudent : une photo seule ne remplace pas toujours une inspection terrain complete
+
 WORKFLOW OBLIGATOIRE en 3 phases :
 
 PHASE 1 - INVESTIGATION (🔍) :
-- Accueille le conseiller et demande les symptomes observes
+- Accueille le conseiller et demande les symptomes observes (texte et/ou photo)
 - Pose des questions ciblees sur : partie de la plante affectee, aspect visuel, odeur, rapidite d'apparition, saison
 - Si deux maladies sont possibles, pose UNE question de differenciation precise
 
@@ -55,7 +63,7 @@ PHASE 3 - PRESCRIPTION (💊) :
 - Si l'utilisateur donne le volume de son pulverisateur, calcule la dose totale
 
 REGLES :
-- Reponds toujours en francais (sauf si l'utilisateur ecrit en anglais)
+- Reponds toujours en francais, quelle que soit la langue du message de l'utilisateur
 - Ne jamais inventer des informations hors de la base IPC
 - Etre concis et pratique pour le terrain
 - Generer un rapport WhatsApp si demande
@@ -65,10 +73,16 @@ SYSTEM_PROMPT_EN = """You are Agro-Expert Pepper, an AI agent specialized in dia
 
 Your single source of truth: the official IPC guide "Diseases and Insect Pests of Black Pepper" (Sarma et al., 2013), stored in your database.
 
+You can also receive PHOTOS of diseased plants. When a photo is provided:
+- First describe objectively what you observe in the image (color, shape of spots, plant part, etc.)
+- Compare these visual observations to the symptoms described in the IPC database
+- If the photo alone is not enough to conclude, ask complementary questions (smell, humidity, duration)
+- Stay cautious: a photo alone does not always replace a full field inspection
+
 MANDATORY WORKFLOW in 3 phases:
 
 PHASE 1 - INVESTIGATION (🔍):
-- Welcome the advisor and ask for observed symptoms
+- Welcome the advisor and ask for observed symptoms (text and/or photo)
 - Ask targeted questions about: plant part affected, visual appearance, smell, speed of onset, season
 - If two diseases are possible, ask ONE precise differentiating question
 
@@ -84,7 +98,7 @@ PHASE 3 - PRESCRIPTION (💊):
 - If user gives sprayer volume, calculate total dose
 
 RULES:
-- Always respond in English (unless user writes in French)
+- Always respond in English, regardless of the language of the user's message
 - Never invent information outside IPC database
 - Be concise and practical for field use
 - Generate WhatsApp report if requested
@@ -230,22 +244,51 @@ Source: IPC - Diseases & Pests of Black Pepper"""
             base += f"\n\n{self.knowledge_base}"
         return base
 
-    def chat(self, user_message: str) -> str:
-        """Envoie un message et retourne la reponse de l'agent."""
-        # Detection de langue automatique
-        if any(w in user_message.lower() for w in
-               ["bonjour", "symptome", "maladie", "feuille", "tige",
-                "racine", "traitement", "dose", "pulverisateur"]):
-            self.lang = "fr"
-        elif any(w in user_message.lower() for w in
-                 ["hello", "symptom", "disease", "leaf", "stem",
-                  "root", "treatment", "dose", "sprayer"]):
-            self.lang = "en"
+    def chat(self, user_message: str, image_bytes: bytes = None,
+              image_media_type: str = "image/jpeg",
+              auto_detect_lang: bool = True) -> str:
+        """
+        Envoie un message et retourne la reponse de l'agent.
+
+        image_bytes : contenu brut (bytes) d'une photo, optionnel.
+        image_media_type : type MIME de l'image ("image/jpeg", "image/png", ...).
+        auto_detect_lang : si True, devine la langue a partir de mots-cles du
+            message (utile en mode console). A mettre a False quand la langue
+            est deja pilotee explicitement ailleurs (ex: selecteur dans une UI),
+            pour que ce choix explicite ne soit jamais ecrase.
+        """
+        # Detection de langue automatique (desactivable)
+        if auto_detect_lang:
+            if any(w in user_message.lower() for w in
+                   ["bonjour", "symptome", "maladie", "feuille", "tige",
+                    "racine", "traitement", "dose", "pulverisateur"]):
+                self.lang = "fr"
+            elif any(w in user_message.lower() for w in
+                     ["hello", "symptom", "disease", "leaf", "stem",
+                      "root", "treatment", "dose", "sprayer"]):
+                self.lang = "en"
+
+        # Construire le contenu du message (texte seul, ou texte + image)
+        if image_bytes:
+            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            user_content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image_media_type,
+                        "data": image_b64,
+                    },
+                },
+                {"type": "text", "text": user_message},
+            ]
+        else:
+            user_content = user_message
 
         # Ajouter le message utilisateur a l'historique
         self.conversation_history.append({
             "role": "user",
-            "content": user_message
+            "content": user_content
         })
 
         try:
