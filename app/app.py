@@ -67,6 +67,11 @@ UI_TEXT = {
         ),
         "advisor_not_provided": "(non renseigne)",
         "welcome_prompt": "Bonjour, je suis pret a vous aider. Presentez-vous.",
+        "lang_switch_hint": (
+            "💡 Cette conversation a commencé dans une autre langue. Cliquez "
+            "sur « Nouveau diagnostic » ci-dessous pour la recommencer "
+            "entièrement en français."
+        ),
     },
     "en": {
         "sidebar_caption": "Black pepper disease diagnosis — IPC Knowledge Base",
@@ -93,6 +98,10 @@ UI_TEXT = {
         ),
         "advisor_not_provided": "(not provided)",
         "welcome_prompt": "Hello, I am ready to help you. Please introduce yourself.",
+        "lang_switch_hint": (
+            "💡 This conversation started in another language. Click "
+            "\"New diagnosis\" below to restart it fully in English."
+        ),
     },
 }
 
@@ -108,6 +117,7 @@ T = UI_TEXT[CUR_LANG]
 if "agent" not in st.session_state:
     st.session_state.agent = AgroExpertPepper(lang=CUR_LANG)
     st.session_state.messages = []
+    st.session_state.conversation_lang = CUR_LANG
     welcome = st.session_state.agent.chat(
         UI_TEXT[CUR_LANG]["welcome_prompt"], auto_detect_lang=False
     )
@@ -122,6 +132,9 @@ with st.sidebar:
         T["lang_label"], ["Français", "English"], key="lang_radio"
     )
     st.session_state.agent.lang = "fr" if lang_choice == "Français" else "en"
+
+    if st.session_state.get("conversation_lang") != st.session_state.agent.lang:
+        st.info(T["lang_switch_hint"])
 
     st.divider()
 
@@ -149,6 +162,7 @@ with st.sidebar:
         st.session_state.agent.reset()
         st.session_state.messages = []
         st.session_state.photo_analyzed_signature = None
+        st.session_state.conversation_lang = st.session_state.agent.lang
         welcome = st.session_state.agent.chat(
             UI_TEXT[st.session_state.agent.lang]["welcome_prompt"],
             auto_detect_lang=False,
