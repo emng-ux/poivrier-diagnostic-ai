@@ -91,6 +91,16 @@ def set_active(username: str, active: bool) -> None:
     ).eq("username", username).execute()
 
 
+def reset_password(username: str, new_password: str) -> None:
+    """Reinitialise le mot de passe d'un compte existant (nouveau sel + hash)."""
+    salt = _new_salt()
+    pw_hash = _hash_password(new_password, salt)
+    _sb().table("app_users").update({
+        "password_hash": pw_hash,
+        "password_salt": salt,
+    }).eq("username", username).execute()
+
+
 def _current_month() -> str:
     return date.today().strftime("%Y-%m")
 
